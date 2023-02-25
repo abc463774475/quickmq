@@ -1,0 +1,10 @@
+golint
+interfacer
+maligned
+scopelint
+exhaustruct
+exhaustivestruct
+paralleltest
+gochecknoglobals
+godot
+godox
