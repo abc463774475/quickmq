@@ -5,6 +5,8 @@ import (
 
 	nlog "github.com/abc463774475/my_tool/n_log"
 	"github.com/abc463774475/quickmq/qcmq/utils/snowflake"
+
+	_ "github.com/abc463774475/msglist"
 )
 
 func TestServer_common(t *testing.T) {

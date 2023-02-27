@@ -1,5 +1,9 @@
+github.com/abc463774475/msglist v0.0.0-20230225033637-153d5aa348b4 h1:sHDt3JGtB/OBK9cZFMWWhyPhS6d66aTU9kn7PpFwM2A=
+github.com/abc463774475/msglist v0.0.0-20230225033637-153d5aa348b4/go.mod h1:VHiyyTu8SLvH55ev2SImT5rvOct2/jDC+cMUGb1uMB0=
 github.com/abc463774475/my_tool v1.0.2 h1:REfo9RKVSB3MaVKV0rvoB6DJ2WMagRXKmP07hPKyGUc=
 github.com/abc463774475/my_tool v1.0.2/go.mod h1:l+r/n9kTT6p8plyJBK2cJnC8Bul9JhGeIjacAvBhvxQ=
+github.com/abc463774475/timer v1.0.8 h1:yTf//U5zRSxONJYA31DI+JaK+mF9O5ugRlS2yBXei2U=
+github.com/abc463774475/timer v1.0.8/go.mod h1:Q77W4M3Ejwr+/GZuQN3e6kT6h4rb3vbmQQBXKwq0ReA=
 github.com/bwmarrin/snowflake v0.3.0 h1:xm67bEhkKh6ij1790JB83OujPR5CzNe8QuQqAgISZN0=
 github.com/bwmarrin/snowflake v0.3.0/go.mod h1:NdZxfVWX+oR6y2K0o6qAYv6gIOP9rjG0/E9WsDpxqwE=
 github.com/deckarep/golang-set v1.7.1 h1:SCQV0S6gTtp6itiFrTqI+pfmJ4LN85S1YzhDf9rTHJQ=

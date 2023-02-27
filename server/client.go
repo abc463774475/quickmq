@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/abc463774475/msglist"
+
 	nlog "github.com/abc463774475/my_tool/n_log"
 	"github.com/abc463774475/quickmq/qcmq/msg"
 	"github.com/abc463774475/quickmq/qcmq/utils/snowflake"
@@ -137,8 +139,8 @@ type client struct {
 	rtt      time.Duration
 	rttStart time.Time
 
-	msgRecv chan *msg.Msg
-	msgSend chan *msg.Msg
+	msgRecv *msglist.MsgList
+	msgSend *msglist.MsgList
 
 	cquit chan struct{}
 
@@ -167,15 +169,17 @@ func (c *client) init() {
 	c.subs = make(map[string]*subscription, 100)
 	c.subsWithSID = make(map[string]*subscription, 100)
 	c.mperms = &msgDeny{}
-	c.msgRecv = make(chan *msg.Msg, 2000)
-	c.msgSend = make(chan *msg.Msg, 2000)
-	c.cquit = make(chan struct{}, 2)
+	// c.msgRecv = make(chan *msg.Msg, 2000)
+	c.msgRecv = msglist.NewMsgList()
+	// c.msgSend = make(chan *msg.Msg, 2000)
+	c.msgSend = msglist.NewMsgList()
+	// c.cquit = make(chan struct{}, 2)
 }
 
 func (c *client) run() {
 	nlog.Info("client run")
 	defer func() {
-		nlog.Info("client run end")
+		nlog.Info("client delete finish")
 	}()
 
 	wg := &sync.WaitGroup{}
@@ -214,10 +218,10 @@ func (c *client) readLoop() {
 		header.Load(headeBytes)
 
 		if header.Length == 0 {
-			c.msgRecv <- &msg.Msg{
+			c.msgRecv.Push(&msg.Msg{
 				Head: *header,
 				Data: []byte{},
-			}
+			})
 			continue
 		}
 
@@ -229,10 +233,10 @@ func (c *client) readLoop() {
 			return
 		}
 
-		c.msgRecv <- &msg.Msg{
+		c.msgRecv.Push(&msg.Msg{
 			Head: *header,
 			Data: data,
-		}
+		})
 	}
 }
 
@@ -242,11 +246,20 @@ func (c *client) writeLoop() {
 		nlog.Info("client writeLoop end")
 	}()
 	for {
-		select {
-		case msg := <-c.msgSend:
-			_ = c.writeMsg(msg)
-		case <-c.cquit:
-			return
+		//select {
+		//case msg := <-c.msgSend:
+		//	_ = c.writeMsg(msg)
+		//case <-c.cquit:
+		//	return
+		//}
+		msgs := c.msgSend.Pop()
+		for _, _msg := range msgs {
+			switch data := _msg.(type) {
+			case *msg.Msg:
+				_ = c.writeMsg(data)
+			case nil:
+				return
+			}
 		}
 	}
 }
@@ -280,7 +293,10 @@ func (c *client) writeMsg(msg *msg.Msg) error {
 func (c *client) closeConnection(state closeState) {
 	nlog.Info("closeConnection: %v", state)
 	c.nc.Close()
-	close(c.cquit)
+	// close(c.cquit)
+
+	c.msgRecv.Push(nil)
+	c.msgSend.Push(nil)
 }
 
 func (c *client) processMsg() {
@@ -290,11 +306,21 @@ func (c *client) processMsg() {
 	}()
 
 	for {
-		select {
-		case msg := <-c.msgRecv:
-			c.processMsgImpl(msg)
-		case <-c.cquit:
-			return
+		//select {
+		//case msg := <-c.msgRecv:
+		//	c.processMsgImpl(msg)
+		//case <-c.cquit:
+		//	return
+		//}
+
+		msgs := c.msgRecv.Pop()
+		for _, _msg := range msgs {
+			switch data := _msg.(type) {
+			case *msg.Msg:
+				c.processMsgImpl(data)
+			case nil:
+				return
+			}
 		}
 	}
 }
@@ -325,11 +351,12 @@ func (c *client) SendMsg(msgID msg.MSGID, i interface{}) {
 		Data: data,
 	}
 
-	if len(c.msgSend) < cap(c.msgSend) {
-		c.msgSend <- msg
-	} else {
-		nlog.Erro("sendMsg: msgSend is full")
-	}
+	//if len(c.msgSend) < cap(c.msgSend) {
+	//	c.msgSend <- msg
+	//} else {
+	//	nlog.Erro("sendMsg: msgSend is full")
+	//}
+	c.msgSend.Push(msg)
 }
 
 func (c *client) Ping() {
@@ -366,7 +393,7 @@ func (c *client) processMsgImpl(_msg *msg.Msg) {
 	case msg.MSG_PONG:
 		c.rtt = time.Since(c.rttStart)
 		nlog.Info("processMsgImpl: %v  rtt %v", _msg.Head.ID, c.rtt)
-	//case msg.MSG_HANDSHAKE:
+	// case msg.MSG_HANDSHAKE:
 	//	c.processMsgHandshake(_msg)
 	case msg.MSG_SNAPSHOTSUBS:
 		c.processMsgSnapshotSubs(_msg)

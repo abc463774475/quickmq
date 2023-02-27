@@ -3,7 +3,7 @@ package server
 import nlog "github.com/abc463774475/my_tool/n_log"
 
 func (c *client) del() {
-	nlog.Erro("del client")
+	nlog.Info("del client prepare")
 	c.acc.delClient(c)
 
 	if c.kind == CLIENT {

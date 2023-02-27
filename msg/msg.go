@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"encoding/binary"
 	"unsafe"
-
-	nlog "github.com/abc463774475/my_tool/n_log"
 )
 
 var HeadSize uint32 = func() uint32 {
@@ -55,6 +53,12 @@ func (m *Msg) Save() []byte {
 	copy(data[:HeadSize], m.Head.Save())
 	copy(data[HeadSize:], m.Data)
 
-	nlog.Erro("save head %v msg: %v  len  %v", m.Head, string(m.Data), len(data))
+	msgFilter := map[MSGID]bool{
+		MSG_PONG: true,
+	}
+
+	if _, ok := msgFilter[m.ID]; !ok {
+		// nlog.Erro("save head %v msg: %v  len  %v", m.Head, string(m.Data), len(data))
+	}
 	return data
 }

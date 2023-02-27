@@ -5,5 +5,4 @@ import (
 )
 
 func TestNats(t *testing.T) {
-
 }

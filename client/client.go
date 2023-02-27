@@ -11,6 +11,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/abc463774475/msglist"
+	"github.com/abc463774475/timer/timewheel"
+
 	"github.com/abc463774475/quickmq/qcmq/utils/snowflake"
 
 	nlog "github.com/abc463774475/my_tool/n_log"
@@ -27,8 +30,9 @@ type (
 		addr string
 
 		clientType int
-		msgRecv    chan *msg.Msg
-		msgSend    chan *msg.Msg
+		msgRecv    *msglist.MsgList
+		// msgSend    chan *msg.Msg
+		msgSend *msglist.MsgList
 
 		rttDuration time.Duration
 		cquit       chan struct{}
@@ -43,22 +47,28 @@ type (
 		rwmuPubCB   sync.RWMutex
 
 		sid uint64
+
+		tw *timewheel.TimeWheel
 	}
 )
 
 func newClient(addr string, ct int) *Client {
 	c := &Client{
-		nc:          nil,
-		addr:        addr,
-		clientType:  ct,
-		msgRecv:     make(chan *msg.Msg, 200),
-		msgSend:     make(chan *msg.Msg, 200),
+		nc:         nil,
+		addr:       addr,
+		clientType: ct,
+		// msgRecv:     make(chan *msg.Msg, 200),
+		msgRecv: msglist.NewMsgList(),
+		msgSend: msglist.NewMsgList(),
+		// msgSend:     make(chan *msg.Msg, 200),
 		cquit:       make(chan struct{}, 2),
 		sfs:         make(map[string]SUBFUN),
 		sackfun:     make(map[int64]SUBACKFUN),
 		pubCallback: make(map[int64]PUBCALLBACK),
+		tw:          timewheel.NewTimeWheel(1*time.Second, 100),
 	}
 
+	c.tw.Start()
 	go c.run()
 
 	return c
@@ -86,10 +96,14 @@ func (c *Client) readLoop() {
 		header.Load(headeBytes)
 
 		if header.Length == 0 {
-			c.msgRecv <- &msg.Msg{
+			//c.msgRecv <- &msg.Msg{
+			//	Head: *header,
+			//	Data: []byte{},
+			//}
+			c.msgRecv.Push(&msg.Msg{
 				Head: *header,
 				Data: []byte{},
-			}
+			})
 			continue
 		}
 
@@ -101,10 +115,14 @@ func (c *Client) readLoop() {
 			return
 		}
 
-		c.msgRecv <- &msg.Msg{
+		//c.msgRecv <- &msg.Msg{
+		//	Head: *header,
+		//	Data: data,
+		//}
+		c.msgRecv.Push(&msg.Msg{
 			Head: *header,
 			Data: data,
-		}
+		})
 	}
 }
 
@@ -114,11 +132,21 @@ func (c *Client) writeLoop() {
 		nlog.Info("writeLoop end")
 	}()
 	for {
-		select {
-		case msg := <-c.msgSend:
-			_ = c.writeMsg(msg)
-		case <-c.cquit:
-			return
+		//select {
+		//case msg := <-c.msgSend:
+		//	_ = c.writeMsg(msg)
+		//case <-c.cquit:
+		//	return
+		//}
+
+		msgs := c.msgSend.Pop()
+		for _, _msg := range msgs {
+			switch data := _msg.(type) {
+			case *msg.Msg:
+				_ = c.writeMsg(data)
+			case nil:
+				return
+			}
 		}
 	}
 }
@@ -161,8 +189,11 @@ func (c *Client) ActiveClose() {
 func (c *Client) closeConnection() {
 	c.nc.Close()
 	// just twice to make sure, since there have two goroutines
-	c.cquit <- struct{}{}
-	c.cquit <- struct{}{}
+	// c.cquit <- struct{}{}
+
+	c.msgRecv.Push(nil)
+	c.msgSend.Push(nil)
+	// c.cquit <- struct{}{}
 }
 
 func (c *Client) UnsubAll() {
@@ -177,28 +208,40 @@ func (c *Client) UnsubAll() {
 }
 
 func (c *Client) del() {
-	close(c.msgRecv)
-	close(c.msgSend)
-	close(c.cquit)
+	// close(c.msgRecv)
+	// close(c.msgSend)
+	// close(c.cquit)
+	c.msgRecv.Clear()
+	c.tw.Stop()
 }
 
 func (c *Client) processMsg() {
 	nlog.Info("processMsg")
-	tick := time.NewTicker(time.Second * 5)
 
 	defer func() {
 		nlog.Info("processMsg end")
-		tick.Stop()
 	}()
 
+	type timerMsg struct{}
+
+	c.tw.Add(5*time.Second, -1, func() {
+		// c.sendMsg(msg.MSG_PING, nil)
+		c.msgRecv.Push(&timerMsg{})
+	}, nil)
+
 	for {
-		select {
-		case msg := <-c.msgRecv:
-			c.processMsgImpl(msg)
-		case <-tick.C:
-			c.sendPing()
-		case <-c.cquit:
-			return
+		_msgs := c.msgRecv.Pop()
+
+		for _, _msg := range _msgs {
+			// recv nil, means the channel is closed
+			switch msgData := _msg.(type) {
+			case *msg.Msg:
+				c.processMsgImpl(msgData)
+			case *timerMsg:
+				c.sendMsg(msg.MSG_PING, nil)
+			case nil:
+				return
+			}
 		}
 	}
 }
@@ -208,7 +251,7 @@ func (c *Client) run() {
 	// Start reading.
 	nlog.Debug("client run")
 	defer func() {
-		nlog.Debug("client run end")
+		nlog.Debug("client del finish")
 	}()
 
 	c.connect()
@@ -243,7 +286,14 @@ func (c *Client) connect() {
 }
 
 func (c *Client) processMsgImpl(_msg *msg.Msg) {
-	nlog.Info("processMsgImpl: %v  %v", _msg.Head.ID, string(_msg.Data))
+	msgFilter := map[msg.MSGID]bool{
+		msg.MSG_PONG: true,
+	}
+
+	if _, ok := msgFilter[_msg.ID]; !ok {
+		// nlog.Info("processMsgImpl: %v  %v", _msg.Head.ID, string(_msg.Data))
+	}
+
 	switch _msg.ID {
 	case msg.MSG_PING:
 		c.processMsgPing(_msg)
@@ -281,11 +331,12 @@ func (c *Client) sendMsg(msgID msg.MSGID, i interface{}) {
 		Data: data,
 	}
 
-	if len(c.msgSend) < cap(c.msgSend) {
-		c.msgSend <- msg
-	} else {
-		nlog.Erro("sendMsg: msgSend is full")
-	}
+	//if len(c.msgSend) < cap(c.msgSend) {
+	//	c.msgSend <- msg
+	//} else {
+	//	nlog.Erro("sendMsg: msgSend is full")
+	//}
+	c.msgSend.Push(msg)
 }
 
 func (c *Client) processMsgPub(_msg *msg.Msg) {
@@ -295,7 +346,7 @@ func (c *Client) processMsgPub(_msg *msg.Msg) {
 		nlog.Erro("processMsgPub: json.Unmarshal: %v", err)
 		return
 	}
-	nlog.Debug("processMsgPub: %v  %v", pub.Sub, string(pub.Data))
+	// nlog.Debug("processMsgPub: %v  %v", pub.Sub, string(pub.Data))
 
 	c.rwmuSFs.RLock()
 	sf, ok := c.sfs[pub.Sub]
