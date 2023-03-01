@@ -4,6 +4,8 @@ import (
 	"net"
 	"sync"
 
+	"github.com/abc463774475/quickmq/qcmq/server/base"
+
 	nlog "github.com/abc463774475/my_tool/n_log"
 	"github.com/abc463774475/quickmq/qcmq/msg"
 	"github.com/abc463774475/quickmq/qcmq/utils/snowflake"
@@ -13,6 +15,8 @@ type server struct {
 	cfg config
 
 	listener net.Listener
+
+	service base.Service
 
 	stats
 
@@ -25,9 +29,9 @@ type server struct {
 	lock sync.RWMutex
 
 	rwmClients sync.RWMutex
-	clients    map[int64]*client
-	routes     map[int64]*client
-	remotes    map[string]*client
+	clients    map[int64]*Client
+	routes     map[int64]*Client
+	remotes    map[string]*Client
 
 	totalClients uint64
 
@@ -43,17 +47,44 @@ type server struct {
 	shutdownComplete chan struct{}
 }
 
-func newServer(options ...Option) *server {
+func (s *server) NewAcceptClienter(id int64) base.AcceptClienHandler {
+	client := newAcceptClient(id, nil, s, nil)
+	return client
+}
+
+func (s *server) AddClient(client base.AcceptClienHandler) error {
+	return nil
+}
+
+func (s *server) DelClient(id int64) error {
+	return nil
+}
+
+func (s *server) GetClient(id int64) base.AcceptClienHandler {
+	return nil
+}
+
+func (s *server) GetID() int64 {
+	return 0
+}
+
+func NewServer(service base.Service, options ...Option) *server {
 	s := &server{}
 	for _, opt := range options {
 		opt.apply(&s.cfg)
 	}
 
-	s.clients = make(map[int64]*client)
-	s.routes = make(map[int64]*client)
+	if service == nil {
+		s.service = s
+	} else {
+		s.service = service
+	}
+
+	s.clients = make(map[int64]*Client)
+	s.routes = make(map[int64]*Client)
 	s.ldmCh = make(chan bool, 1)
 	s.shutdownComplete = make(chan struct{})
-	s.remotes = make(map[string]*client)
+	s.remotes = make(map[string]*Client)
 	s.allRouterConfInfo = make(map[string]*RouterConfInfo)
 
 	s.gacc = NewAccount(globalAccountName)
@@ -76,9 +107,11 @@ func (s *server) startClientListener() {
 }
 
 func (s *server) acceptOneConnection(conn net.Conn, kind ClientType) {
-	// nlog.Info("acceptOneConnection %v", conn.RemoteAddr())
 	id := snowflake.GetID()
-	c := newAcceptClient(id, conn, s)
+
+	clienter := s.service.NewAcceptClienter(id)
+
+	c := newAcceptClient(id, conn, s, clienter)
 	c.kind = kind
 	c.init()
 
@@ -95,7 +128,7 @@ func (s *server) acceptOneConnection(conn net.Conn, kind ClientType) {
 	//}
 }
 
-func (s *server) start() {
+func (s *server) Start() {
 	nlog.Info("start server  %v %v", s.cfg.Addr, s.cfg.ClusterAddr)
 	go s.startClientListener()
 
@@ -121,7 +154,7 @@ func (s *server) globalAccount() *Account {
 	return rs
 }
 
-func (s *server) addRoute(c *client, name string) bool {
+func (s *server) addRoute(c *Client, name string) bool {
 	s.lock.Lock()
 	if _, ok := s.routes[c.id]; ok {
 		s.lock.Unlock()
@@ -143,7 +176,7 @@ func (s *server) addRoute(c *client, name string) bool {
 	return true
 }
 
-func (s *server) sendSubsToRoute(route *client) {
+func (s *server) sendSubsToRoute(route *Client) {
 	all := s.getAllAccountInfo()
 	route.SendMsg(msg.MSG_SNAPSHOTSUBS, &msg.MsgSnapshotSubs{All: all})
 
@@ -171,7 +204,7 @@ func (s *server) getAllAccountInfo() []*msg.Accounts {
 }
 
 // 告知其他路由，有新的路由加入
-func (s *server) forwardNewRouteInfoToKnownServers(route2 *client) {
+func (s *server) forwardNewRouteInfoToKnownServers(route2 *Client) {
 	s.lock.Lock()
 	for _, route := range s.routes {
 		if route.id == route2.id {
@@ -182,7 +215,7 @@ func (s *server) forwardNewRouteInfoToKnownServers(route2 *client) {
 	s.lock.Unlock()
 }
 
-func (s *server) removeRoute(c *client) {
+func (s *server) removeRoute(c *Client) {
 	s.lock.Lock()
 	if _, ok := s.routes[c.id]; !ok {
 		s.lock.Unlock()
@@ -203,7 +236,7 @@ func (s *server) removeRoute(c *client) {
 	nlog.Erro("removeRoute: %v", c.name)
 }
 
-func (s *server) snapshotSubs(c *client, snapShot *msg.MsgSnapshotSubs) {
+func (s *server) snapshotSubs(c *Client, snapShot *msg.MsgSnapshotSubs) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
@@ -258,7 +291,7 @@ func (s *server) startRouterListener() {
 	}
 }
 
-func (s *server) addRemoteName(c *client, rname string) {
+func (s *server) addRemoteName(c *Client, rname string) {
 	nlog.Debug("addRemoteName: %v %v", c.id, rname)
 	s.lock.Lock()
 	if _, ok := s.routes[c.id]; !ok {
@@ -302,7 +335,7 @@ func (s *server) connectToRoute(name string, addr string) {
 	s.lock.Unlock()
 }
 
-func (s *server) addRouterConfInfo(c *client, msg *msg.MsgRegisterRouter) {
+func (s *server) addRouterConfInfo(c *Client, msg *msg.MsgRegisterRouter) {
 	s.rwmRouter.Lock()
 	defer s.rwmRouter.Unlock()
 	if _, ok := s.allRouterConfInfo[msg.Name]; ok {

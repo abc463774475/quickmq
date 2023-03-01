@@ -11,6 +11,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/abc463774475/quickmq/qcmq/server/base"
+
 	"github.com/abc463774475/msglist"
 	"github.com/abc463774475/timer/timewheel"
 
@@ -21,18 +23,24 @@ import (
 )
 
 type (
-	SUBFUN      func(data []byte, _msg *msg.MsgPub)
-	SUBACKFUN   func(_msg *msg.MsgSubAck)
-	PUBCALLBACK func(data []byte)
+	// SUBFUN      func(data []byte, _msg *msg.MsgPub)
+	// SUBACKFUN   func(_msg *msg.MsgSubAck)
+	// PUBCALLBACK func(data []byte)
+
+	SUBFUN      = base.SUBFUN
+	SUBACKFUN   = base.SUBACKFUN
+	PUBCALLBACK = base.PUBCALLBACK
 
 	Client struct {
+		id   int64
 		nc   net.Conn
 		addr string
 
 		clientType int
-		msgRecv    *msglist.MsgList
-		// msgSend    chan *msg.Msg
-		msgSend *msglist.MsgList
+		readList   *msglist.MsgList
+		writeList  *msglist.MsgList
+
+		clienter base.ConnectClientHandler
 
 		rttDuration time.Duration
 		cquit       chan struct{}
@@ -40,11 +48,11 @@ type (
 		sfs     map[string]SUBFUN
 		rwmuSFs sync.RWMutex
 
-		sackfun  map[int64]SUBACKFUN
+		sackfuns map[int64]SUBACKFUN
 		rwmuSAck sync.RWMutex
 
-		pubCallback map[int64]PUBCALLBACK
-		rwmuPubCB   sync.RWMutex
+		pubCallbacks map[int64]PUBCALLBACK
+		rwmuPubCB    sync.RWMutex
 
 		sid uint64
 
@@ -52,30 +60,46 @@ type (
 	}
 )
 
-func newClient(addr string, ct int) *Client {
+func (c *Client) GetID() int64 {
+	return c.id
+}
+
+func (c *Client) Register() {}
+
+func newClient(addr string, ct int, handler base.ConnectClientHandler) *Client {
+	id := snowflake.GetID()
 	c := &Client{
 		nc:         nil,
 		addr:       addr,
 		clientType: ct,
-		// msgRecv:     make(chan *msg.Msg, 200),
-		msgRecv: msglist.NewMsgList(),
-		msgSend: msglist.NewMsgList(),
-		// msgSend:     make(chan *msg.Msg, 200),
-		cquit:       make(chan struct{}, 2),
-		sfs:         make(map[string]SUBFUN),
-		sackfun:     make(map[int64]SUBACKFUN),
-		pubCallback: make(map[int64]PUBCALLBACK),
-		tw:          timewheel.NewTimeWheel(1*time.Second, 100),
+		id:         id,
+	}
+	if handler == nil {
+		handler = c
 	}
 
+	c.clienter = handler
+
+	c.Init()
 	c.tw.Start()
 	go c.run()
 
 	return c
 }
 
-func NewClient(addr string) *Client {
-	return newClient(addr, 0)
+func NewClient(addr string, handler base.ConnectClientHandler) *Client {
+	return newClient(addr, 0, handler)
+}
+
+// Init
+func (c *Client) Init() {
+	c.readList = msglist.NewMsgList()
+	c.writeList = msglist.NewMsgList()
+	c.cquit = make(chan struct{}, 2)
+	c.sfs = make(map[string]SUBFUN)
+	c.sackfuns = make(map[int64]SUBACKFUN)
+	c.pubCallbacks = make(map[int64]PUBCALLBACK)
+	c.tw = timewheel.NewTimeWheel(1*time.Second, 100)
 }
 
 func (c *Client) readLoop() {
@@ -96,11 +120,7 @@ func (c *Client) readLoop() {
 		header.Load(headeBytes)
 
 		if header.Length == 0 {
-			//c.msgRecv <- &msg.Msg{
-			//	Head: *header,
-			//	Data: []byte{},
-			//}
-			c.msgRecv.Push(&msg.Msg{
+			c.readList.Push(&msg.Msg{
 				Head: *header,
 				Data: []byte{},
 			})
@@ -115,11 +135,7 @@ func (c *Client) readLoop() {
 			return
 		}
 
-		//c.msgRecv <- &msg.Msg{
-		//	Head: *header,
-		//	Data: data,
-		//}
-		c.msgRecv.Push(&msg.Msg{
+		c.readList.Push(&msg.Msg{
 			Head: *header,
 			Data: data,
 		})
@@ -132,14 +148,7 @@ func (c *Client) writeLoop() {
 		nlog.Info("writeLoop end")
 	}()
 	for {
-		//select {
-		//case msg := <-c.msgSend:
-		//	_ = c.writeMsg(msg)
-		//case <-c.cquit:
-		//	return
-		//}
-
-		msgs := c.msgSend.Pop()
+		msgs := c.writeList.Pop()
 		for _, _msg := range msgs {
 			switch data := _msg.(type) {
 			case *msg.Msg:
@@ -191,8 +200,8 @@ func (c *Client) closeConnection() {
 	// just twice to make sure, since there have two goroutines
 	// c.cquit <- struct{}{}
 
-	c.msgRecv.Push(nil)
-	c.msgSend.Push(nil)
+	c.readList.Push(nil)
+	c.writeList.Push(nil)
 	// c.cquit <- struct{}{}
 }
 
@@ -204,14 +213,11 @@ func (c *Client) UnsubAll() {
 		subs = append(subs, k)
 	}
 
-	c.sendMsg(msg.MSG_UNSUB, msg.MsgUnSub{Subs: subs})
+	c.SendMsg(msg.MSG_UNSUB, msg.MsgUnSub{Subs: subs})
 }
 
 func (c *Client) del() {
-	// close(c.msgRecv)
-	// close(c.msgSend)
-	// close(c.cquit)
-	c.msgRecv.Clear()
+	c.readList.Clear()
 	c.tw.Stop()
 }
 
@@ -225,12 +231,12 @@ func (c *Client) processMsg() {
 	type timerMsg struct{}
 
 	c.tw.Add(5*time.Second, -1, func() {
-		// c.sendMsg(msg.MSG_PING, nil)
-		c.msgRecv.Push(&timerMsg{})
+		// c.SendMsg(msg.MSG_PING, nil)
+		c.readList.Push(&timerMsg{})
 	}, nil)
 
 	for {
-		_msgs := c.msgRecv.Pop()
+		_msgs := c.readList.Pop()
 
 		for _, _msg := range _msgs {
 			// recv nil, means the channel is closed
@@ -238,7 +244,7 @@ func (c *Client) processMsg() {
 			case *msg.Msg:
 				c.processMsgImpl(msgData)
 			case *timerMsg:
-				c.sendMsg(msg.MSG_PING, nil)
+				c.SendMsg(msg.MSG_PING, nil)
 			case nil:
 				return
 			}
@@ -283,6 +289,8 @@ func (c *Client) connect() {
 
 	nlog.Info("connect: %v", c.addr)
 	// c.register()
+
+	c.clienter.Register()
 }
 
 func (c *Client) processMsgImpl(_msg *msg.Msg) {
@@ -308,16 +316,16 @@ func (c *Client) processMsgImpl(_msg *msg.Msg) {
 
 func (c *Client) register() {
 	nlog.Debug("register")
-	c.sendMsg(msg.MSG_HANDSHAKE, &msg.MsgHandshake{
+	c.SendMsg(msg.MSG_HANDSHAKE, &msg.MsgHandshake{
 		Type: int32(c.clientType),
 		Name: "client test",
 	})
 }
 
-func (c *Client) sendMsg(msgID msg.MSGID, i interface{}) {
+func (c *Client) SendMsg(msgID msg.MSGID, i interface{}) {
 	data, err := json.Marshal(i)
 	if err != nil {
-		nlog.Erro("sendMsg: json.Marshal: %v", err)
+		nlog.Erro("SendMsg: json.Marshal: %v", err)
 		return
 	}
 
@@ -331,12 +339,7 @@ func (c *Client) sendMsg(msgID msg.MSGID, i interface{}) {
 		Data: data,
 	}
 
-	//if len(c.msgSend) < cap(c.msgSend) {
-	//	c.msgSend <- msg
-	//} else {
-	//	nlog.Erro("sendMsg: msgSend is full")
-	//}
-	c.msgSend.Push(msg)
+	c.writeList.Push(msg)
 }
 
 func (c *Client) processMsgPub(_msg *msg.Msg) {
@@ -377,7 +380,7 @@ func (c *Client) Subscribe(sub string, subf SUBFUN, subackf SUBACKFUN) {
 	sid := atomic.LoadUint64(&c.sid)
 	strSID := strconv.FormatUint(sid, 20)
 	uid := snowflake.GetID()
-	c.sendMsg(msg.MSG_SUB, &msg.MsgSub{
+	c.SendMsg(msg.MSG_SUB, &msg.MsgSub{
 		UniqueID: uid,
 		Sub:      sub,
 		SID:      strSID,
@@ -385,7 +388,7 @@ func (c *Client) Subscribe(sub string, subf SUBFUN, subackf SUBACKFUN) {
 
 	if subackf != nil {
 		c.rwmuSAck.Lock()
-		c.sackfun[uid] = subackf
+		c.sackfuns[uid] = subackf
 		c.rwmuSAck.Unlock()
 	}
 
@@ -400,7 +403,7 @@ func (c *Client) UnSubscribe(sub string) {
 		return
 	}
 
-	c.sendMsg(msg.MSG_UNSUB, &msg.MsgUnSub{
+	c.SendMsg(msg.MSG_UNSUB, &msg.MsgUnSub{
 		Subs: []string{sub},
 	})
 	delete(c.sfs, sub)
@@ -427,7 +430,7 @@ func (c *Client) Publish(sub string, i interface{}) {
 		}
 	}
 
-	c.sendMsg(msg.MSG_PUB, &msg.MsgPub{
+	c.SendMsg(msg.MSG_PUB, &msg.MsgPub{
 		UniqueID: snowflake.GetID(),
 		Sub:      sub,
 		Data:     data,
@@ -455,15 +458,11 @@ func (c *Client) Req(sub string, i interface{}, pubCB PUBCALLBACK) {
 	}
 	uid := snowflake.GetID()
 
-	// c.rwmuPubCB.Lock()
-	// c.pubCallback[uid] = pubCB
-	// c.rwmuPubCB.Unlock()
-
 	c.Subscribe(fmt.Sprintf("%v", uid), func(data []byte, pub *msg.MsgPub) {
 		pubCB(data)
 	}, nil)
 
-	c.sendMsg(msg.MSG_PUB, &msg.MsgPub{
+	c.SendMsg(msg.MSG_PUB, &msg.MsgPub{
 		UniqueID: uid,
 		Sub:      sub,
 		Data:     data,
@@ -479,14 +478,14 @@ func (c *Client) processMsgSubAck(_msg *msg.Msg) {
 	}
 
 	c.rwmuSAck.Lock()
-	subackf, ok := c.sackfun[suback.UniqueID]
+	subackf, ok := c.sackfuns[suback.UniqueID]
 	if !ok {
 		c.rwmuSAck.Unlock()
 		// nlog.Erro("processMsgSubAck: suback not found: %v", suback.UniqueID)
 		return
 	}
 
-	delete(c.sackfun, suback.UniqueID)
+	delete(c.sackfuns, suback.UniqueID)
 
 	c.rwmuSAck.Unlock()
 

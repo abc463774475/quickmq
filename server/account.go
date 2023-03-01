@@ -31,7 +31,7 @@ type Account struct {
 	updated  time.Time
 	created  time.Time
 
-	client *client
+	client *Client
 
 	sl *sublist
 
@@ -41,7 +41,7 @@ type Account struct {
 	rwmu sync.RWMutex
 	csmu sync.RWMutex
 
-	clients  map[*client]struct{}
+	clients  map[*Client]struct{}
 	clientMu sync.Mutex
 }
 
@@ -62,7 +62,7 @@ func NewAccount(name string) *Account {
 }
 
 func (a *Account) init() {
-	a.clients = make(map[*client]struct{})
+	a.clients = make(map[*Client]struct{})
 	a.rm = make(map[string]int32)
 	a.curAllSubs = make(map[string]*subscription, 10000)
 }
@@ -71,11 +71,11 @@ func (a *Account) String() string {
 	return a.name + strconv.FormatUint(uint64(a.uniqueID), 36)
 }
 
-func (a *Account) setCurClient(client2 *client) {
+func (a *Account) setCurClient(client2 *Client) {
 	a.client = client2
 }
 
-func (a *Account) addClient(c *client) {
+func (a *Account) addClient(c *Client) {
 	a.clientMu.Lock()
 	if _, ok := a.clients[c]; ok {
 		nlog.Erro("Account.addClient: client already added %v", c)
@@ -83,11 +83,10 @@ func (a *Account) addClient(c *client) {
 		return
 	}
 	a.clients[c] = struct{}{}
-	// nlog.Debug("Account.addClient: added client %v", a.name)
 	a.clientMu.Unlock()
 }
 
-func (a *Account) delClient(c *client) {
+func (a *Account) delClient(c *Client) {
 	a.clientMu.Lock()
 	if _, ok := a.clients[c]; !ok {
 		nlog.Erro("Account.delClient: client not found", c)

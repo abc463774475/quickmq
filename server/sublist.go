@@ -8,7 +8,7 @@ import (
 )
 
 type subscription struct {
-	client  *client
+	client  *Client
 	subject string
 	queue   []byte
 	// qw represents the queue weight.

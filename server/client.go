@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/abc463774475/quickmq/qcmq/server/base"
+
 	"github.com/abc463774475/msglist"
 
 	nlog "github.com/abc463774475/my_tool/n_log"
@@ -111,7 +113,7 @@ type outbound struct {
 	stc chan struct{} // Stall chan we create to slow down producers on overrun, e.g. fan-in.
 }
 
-type client struct {
+type Client struct {
 	id             int64
 	kind           ClientType
 	isServerAccept bool
@@ -126,6 +128,8 @@ type client struct {
 	msubs int32
 
 	nc net.Conn
+
+	clienter base.AcceptClienHandler
 
 	in  readCache
 	out outbound
@@ -147,25 +151,42 @@ type client struct {
 	mu sync.Mutex
 }
 
-func newAcceptClient(id int64, conn net.Conn, s *server) *client {
-	c := &client{}
+func (c *Client) GetID() int64 {
+	return c.id
+}
+
+func (c *Client) HandleRegister(_msg *msg.Msg) {
+	c.processMsgHandshake(_msg)
+}
+
+func (c *Client) HandlePublish(_msg *msg.Msg) {
+	c.processMsgPub(_msg)
+}
+
+func (c *Client) HandleSubscribe(_msg *msg.Msg) {
+	c.processMsgSub(_msg)
+}
+
+func newAcceptClient(id int64, conn net.Conn, s *server, clienter base.AcceptClienHandler) *Client {
+	c := &Client{}
 	c.id = id
 	c.srv = s
 	c.nc = conn
 	c.isServerAccept = true
+	c.clienter = clienter
 
 	return c
 }
 
-func newConnectClient(addr string) *client {
-	c := &client{}
+func newConnectClient(addr string) *Client {
+	c := &Client{}
 	c.id = snowflake.GetID()
 	c.addr = addr
 	c.isServerAccept = false
 	return c
 }
 
-func (c *client) init() {
+func (c *Client) init() {
 	c.subs = make(map[string]*subscription, 100)
 	c.subsWithSID = make(map[string]*subscription, 100)
 	c.mperms = &msgDeny{}
@@ -176,7 +197,7 @@ func (c *client) init() {
 	// c.cquit = make(chan struct{}, 2)
 }
 
-func (c *client) run() {
+func (c *Client) run() {
 	nlog.Info("client run")
 	defer func() {
 		nlog.Info("client delete finish")
@@ -200,7 +221,7 @@ func (c *client) run() {
 	c.del()
 }
 
-func (c *client) readLoop() {
+func (c *Client) readLoop() {
 	nlog.Info("client readLoop")
 	defer func() {
 		nlog.Info("client readLoop end")
@@ -240,18 +261,12 @@ func (c *client) readLoop() {
 	}
 }
 
-func (c *client) writeLoop() {
+func (c *Client) writeLoop() {
 	nlog.Info("client writeLoop")
 	defer func() {
 		nlog.Info("client writeLoop end")
 	}()
 	for {
-		//select {
-		//case msg := <-c.msgSend:
-		//	_ = c.writeMsg(msg)
-		//case <-c.cquit:
-		//	return
-		//}
 		msgs := c.msgSend.Pop()
 		for _, _msg := range msgs {
 			switch data := _msg.(type) {
@@ -264,7 +279,7 @@ func (c *client) writeLoop() {
 	}
 }
 
-func (c *client) writeMsg(msg *msg.Msg) error {
+func (c *Client) writeMsg(msg *msg.Msg) error {
 	data := msg.Save()
 	n, err := c.nc.Write(data)
 	if err != nil {
@@ -290,7 +305,7 @@ func (c *client) writeMsg(msg *msg.Msg) error {
 	return nil
 }
 
-func (c *client) closeConnection(state closeState) {
+func (c *Client) closeConnection(state closeState) {
 	nlog.Info("closeConnection: %v", state)
 	c.nc.Close()
 	// close(c.cquit)
@@ -299,25 +314,18 @@ func (c *client) closeConnection(state closeState) {
 	c.msgSend.Push(nil)
 }
 
-func (c *client) processMsg() {
+func (c *Client) processMsg() {
 	nlog.Info("client processMsg")
 	defer func() {
 		nlog.Info("client processMsg end")
 	}()
 
 	for {
-		//select {
-		//case msg := <-c.msgRecv:
-		//	c.processMsgImpl(msg)
-		//case <-c.cquit:
-		//	return
-		//}
-
 		msgs := c.msgRecv.Pop()
 		for _, _msg := range msgs {
 			switch data := _msg.(type) {
 			case *msg.Msg:
-				c.processMsgImpl(data)
+				c.ProcessMsgImpl(data)
 			case nil:
 				return
 			}
@@ -325,7 +333,7 @@ func (c *client) processMsg() {
 	}
 }
 
-func (c *client) SendMsg(msgID msg.MSGID, i interface{}) {
+func (c *Client) SendMsg(msgID msg.MSGID, i interface{}) {
 	var data []byte
 	var err error
 	if i == nil {
@@ -351,20 +359,15 @@ func (c *client) SendMsg(msgID msg.MSGID, i interface{}) {
 		Data: data,
 	}
 
-	//if len(c.msgSend) < cap(c.msgSend) {
-	//	c.msgSend <- msg
-	//} else {
-	//	nlog.Erro("sendMsg: msgSend is full")
-	//}
 	c.msgSend.Push(msg)
 }
 
-func (c *client) Ping() {
+func (c *Client) Ping() {
 	c.rttStart = time.Now()
 	c.SendMsg(msg.MSG_PING, msg.MsgPing{})
 }
 
-func (c *client) processMsgHandshake(_msg *msg.Msg) {
+func (c *Client) processMsgHandshake(_msg *msg.Msg) {
 	handshake := &msg.MsgHandshake{}
 	err := json.Unmarshal(_msg.Data, handshake)
 	if err != nil {
@@ -385,7 +388,7 @@ func (c *client) processMsgHandshake(_msg *msg.Msg) {
 	}
 }
 
-func (c *client) processMsgImpl(_msg *msg.Msg) {
+func (c *Client) ProcessMsgImpl(_msg *msg.Msg) {
 	// nlog.Erro("processMsgImpl: %v  data %v", _msg.Head.ID, string(_msg.Data))
 	switch _msg.ID {
 	case msg.MSG_PING:
@@ -393,16 +396,17 @@ func (c *client) processMsgImpl(_msg *msg.Msg) {
 	case msg.MSG_PONG:
 		c.rtt = time.Since(c.rttStart)
 		nlog.Info("processMsgImpl: %v  rtt %v", _msg.Head.ID, c.rtt)
-	// case msg.MSG_HANDSHAKE:
+	case msg.MSG_HANDSHAKE:
+		c.HandleRegister(_msg)
 	//	c.processMsgHandshake(_msg)
 	case msg.MSG_SNAPSHOTSUBS:
 		c.processMsgSnapshotSubs(_msg)
 	case msg.MSG_SUB:
-		c.processMsgSub(_msg)
+		c.clienter.HandleSubscribe(_msg)
 	case msg.MSG_UNSUB:
 		c.processMsgUnSub(_msg)
 	case msg.MSG_PUB:
-		c.processMsgPub(_msg)
+		c.clienter.HandlePublish(_msg)
 	case msg.MSG_REMOTEROUTEADDSUB:
 		c.processMsgRemoteRouteAddSub(_msg)
 	case msg.MSG_REMOTEROUTEADDUNSUB:
@@ -416,7 +420,7 @@ func (c *client) processMsgImpl(_msg *msg.Msg) {
 	}
 }
 
-func (c *client) processMsgSnapshotSubs(_msg *msg.Msg) {
+func (c *Client) processMsgSnapshotSubs(_msg *msg.Msg) {
 	snapshotSubs := &msg.MsgSnapshotSubs{}
 	err := json.Unmarshal(_msg.Data, snapshotSubs)
 	if err != nil {
@@ -427,7 +431,7 @@ func (c *client) processMsgSnapshotSubs(_msg *msg.Msg) {
 	c.srv.snapshotSubs(c, snapshotSubs)
 }
 
-func (c *client) processMsgRoutePub(_msg *msg.Msg) {
+func (c *Client) processMsgRoutePub(_msg *msg.Msg) {
 	routePub := &msg.MsgRoutePub{}
 	err := json.Unmarshal(_msg.Data, routePub)
 	if err != nil {
@@ -441,7 +445,7 @@ func (c *client) processMsgRoutePub(_msg *msg.Msg) {
 	})
 }
 
-func (c *client) processMsgSub(_msg *msg.Msg) {
+func (c *Client) processMsgSub(_msg *msg.Msg) {
 	msub := &msg.MsgSub{}
 	err := json.Unmarshal(_msg.Data, msub)
 	if err != nil {
@@ -494,7 +498,7 @@ func (c *client) processMsgSub(_msg *msg.Msg) {
 	})
 }
 
-func (c *client) processMsgUnSub(_msg *msg.Msg) {
+func (c *Client) processMsgUnSub(_msg *msg.Msg) {
 	usub := &msg.MsgUnSub{}
 	err := json.Unmarshal(_msg.Data, usub)
 	if err != nil {
@@ -505,7 +509,7 @@ func (c *client) processMsgUnSub(_msg *msg.Msg) {
 	c.UnSub(usub.Subs, true)
 }
 
-func (c *client) processMsgPub(_msg *msg.Msg) {
+func (c *Client) processMsgPub(_msg *msg.Msg) {
 	pub := &msg.MsgPub{}
 	err := json.Unmarshal(_msg.Data, pub)
 	if err != nil {
@@ -516,7 +520,7 @@ func (c *client) processMsgPub(_msg *msg.Msg) {
 	c.msgPub(pub)
 }
 
-func (c *client) msgPub(pub *msg.MsgPub) {
+func (c *Client) msgPub(pub *msg.MsgPub) {
 	r := c.acc.sl.match(pub.Sub)
 	if r == nil {
 		nlog.Erro("processMsgPub: match not exist: %v", pub.Sub)
@@ -535,14 +539,14 @@ func (c *client) msgPub(pub *msg.MsgPub) {
 	}
 }
 
-func (c *client) registerWithAccount(acc *Account) error {
+func (c *Client) registerWithAccount(acc *Account) error {
 	nlog.Debug("client id %v registerWithAccount: %v", c.id, acc.name)
 	c.acc = acc
 	acc.addClient(c)
 	return nil
 }
 
-func (c *client) sendRemoteNewSub(sub *subscription) {
+func (c *Client) sendRemoteNewSub(sub *subscription) {
 	nlog.Debug("sendRemoteNewSub: %v", sub.subject)
 	c.SendMsg(msg.MSG_REMOTEROUTEADDSUB, &msg.MsgRemoteRouteAddSub{
 		Name: c.name,
@@ -550,14 +554,14 @@ func (c *client) sendRemoteNewSub(sub *subscription) {
 	})
 }
 
-func (c *client) sendRemoteUnSub(subs []string) {
+func (c *Client) sendRemoteUnSub(subs []string) {
 	nlog.Debug("sendRemoteNewSub: %v", subs)
 	c.SendMsg(msg.MSG_REMOTEROUTEADDUNSUB, &msg.MsgRemoteRouteAddUnsub{
 		Subs: subs,
 	})
 }
 
-func (c *client) processMsgRemoteRouteAddSub(_msg *msg.Msg) {
+func (c *Client) processMsgRemoteRouteAddSub(_msg *msg.Msg) {
 	remoteNewSub := &msg.MsgRemoteRouteAddSub{}
 	err := json.Unmarshal(_msg.Data, remoteNewSub)
 	if err != nil {
@@ -592,7 +596,7 @@ func (c *client) processMsgRemoteRouteAddSub(_msg *msg.Msg) {
 	srv.lock.Unlock()
 }
 
-func (c *client) processMsgRegisterRouter(_msg *msg.Msg) {
+func (c *Client) processMsgRegisterRouter(_msg *msg.Msg) {
 	registerRouter := &msg.MsgRegisterRouter{}
 	err := json.Unmarshal(_msg.Data, registerRouter)
 	if err != nil {
@@ -620,7 +624,7 @@ func (c *client) processMsgRegisterRouter(_msg *msg.Msg) {
 	c.SendMsg(msg.MSG_CURALLROUTES, retMsg)
 }
 
-func (c *client) processMsgCurAllRoutes(_msg *msg.Msg) {
+func (c *Client) processMsgCurAllRoutes(_msg *msg.Msg) {
 	curAllRoutes := &msg.MsgCurAllRoutes{}
 	err := json.Unmarshal(_msg.Data, curAllRoutes)
 	if err != nil {
@@ -631,7 +635,7 @@ func (c *client) processMsgCurAllRoutes(_msg *msg.Msg) {
 	c.srv.addRouterInfos(curAllRoutes.All)
 }
 
-func (c *client) processMsgRemoteRouteUnSub(_msg *msg.Msg) {
+func (c *Client) processMsgRemoteRouteUnSub(_msg *msg.Msg) {
 	remoteUnSub := &msg.MsgRemoteRouteAddUnsub{}
 	err := json.Unmarshal(_msg.Data, remoteUnSub)
 	if err != nil {

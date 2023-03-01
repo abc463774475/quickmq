@@ -16,7 +16,7 @@ type route struct {
 }
 
 // buf not json just fro quick
-func (c *client) addRouteSubOrUnsubProtoToBuf(buf []byte,
+func (c *Client) addRouteSubOrUnsubProtoToBuf(buf []byte,
 	accName string, sub *subscription, isSub bool,
 ) []byte {
 	if isSub {
@@ -36,7 +36,7 @@ func (c *client) addRouteSubOrUnsubProtoToBuf(buf []byte,
 	return buf
 }
 
-func (c *client) connect() bool {
+func (c *Client) connect() bool {
 	var err error
 	addr := c.addr
 	c.nc, err = net.DialTimeout("tcp", addr, time.Second*5)

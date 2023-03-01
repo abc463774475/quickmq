@@ -2,7 +2,7 @@ package server
 
 import nlog "github.com/abc463774475/my_tool/n_log"
 
-func (c *client) del() {
+func (c *Client) del() {
 	nlog.Info("del client prepare")
 	c.acc.delClient(c)
 
@@ -29,7 +29,7 @@ func (c *client) del() {
 	}
 }
 
-func (c *client) UnSub(subs []string, isNotifyRoute bool) {
+func (c *Client) UnSub(subs []string, isNotifyRoute bool) {
 	acc := c.acc
 	for _, sub := range subs {
 		c.mu.Lock()
