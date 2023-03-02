@@ -16,7 +16,7 @@ func TestClient_sub(t *testing.T) {
 	snowflake.Init(1000)
 	sub := "haorena"
 
-	c := newClient("localhost:8087", 0, nil)
+	c := NewClient(WithAddr("localhost:8087"))
 	var count int32 = 0
 	time.AfterFunc(1*time.Second, func() {
 		c.Subscribe(sub, func(data []byte, pub *msg.MsgPub) {
@@ -36,7 +36,7 @@ func TestClient_sub(t *testing.T) {
 
 func TestClient_pub(t *testing.T) {
 	snowflake.Init(1001)
-	c := newClient("localhost:8087", 0, nil)
+	c := NewClient(WithAddr("localhost:8087"))
 	data := []byte("hello world")
 	time.AfterFunc(2*time.Second, func() {
 		for i := 0; i < 100000; i++ {

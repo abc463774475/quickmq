@@ -66,19 +66,26 @@ func (c *Client) GetID() int64 {
 
 func (c *Client) Register() {}
 
-func newClient(addr string, ct int, handler base.ConnectClientHandler) *Client {
+func newClient(options ...Option) *Client {
 	id := snowflake.GetID()
 	c := &Client{
-		nc:         nil,
-		addr:       addr,
-		clientType: ct,
-		id:         id,
+		nc: nil,
+		// addr:       addr,
+		// clientType: ct,
+		id: id,
 	}
-	if handler == nil {
-		handler = c
-	}
+	//if handler == nil {
+	//	handler = c
+	//}
+	//
+	//c.clienter = handler
 
-	c.clienter = handler
+	for _, o := range options {
+		o.apply(c)
+	}
+	if c.clienter == nil {
+		c.clienter = c
+	}
 
 	c.Init()
 	c.tw.Start()
@@ -87,8 +94,8 @@ func newClient(addr string, ct int, handler base.ConnectClientHandler) *Client {
 	return c
 }
 
-func NewClient(addr string, handler base.ConnectClientHandler) *Client {
-	return newClient(addr, 0, handler)
+func NewClient(options ...Option) *Client {
+	return newClient(options...)
 }
 
 // Init

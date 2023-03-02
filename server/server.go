@@ -67,16 +67,19 @@ func (s *server) GetID() int64 {
 	return 0
 }
 
-func NewServer(service base.Service, options ...Option) *server {
+func NewServer(options ...Option) *server {
 	s := &server{}
 	for _, opt := range options {
-		opt.apply(&s.cfg)
+		opt.apply(s)
 	}
 
-	if service == nil {
+	//if service == nil {
+	//	s.service = s
+	//} else {
+	//	s.service = service
+	//}
+	if s.service == nil {
 		s.service = s
-	} else {
-		s.service = service
 	}
 
 	s.clients = make(map[int64]*Client)

@@ -13,12 +13,12 @@ import (
 
 func TestNats(t *testing.T) {
 	snowflake.Init(1)
-	server.NewServer(nil, server.WithAddr(":8081")).Start()
+	server.NewServer(server.WithAddr(":8081")).Start()
 }
 
 func TestSub(t *testing.T) {
 	snowflake.Init(1)
-	c := client.NewClient(":8081", nil)
+	c := client.NewClient(client.WithAddr(":8081"))
 
 	c.Subscribe("test", func(data []byte, _msg *msg.MsgPub) {
 		nlog.Info("test %v", _msg)
@@ -29,7 +29,7 @@ func TestSub(t *testing.T) {
 
 func TestPub(t *testing.T) {
 	snowflake.Init(1)
-	c := client.NewClient(":8081", nil)
+	c := client.NewClient(client.WithAddr(":8081"))
 
 	c.Publish("test", []byte("hello world"))
 

@@ -1,5 +1,7 @@
 package server
 
+import "github.com/abc463774475/quickmq/server/base"
+
 type config struct {
 	Addr string `json:"addr"`
 	Name string `json:"name"`
@@ -12,47 +14,54 @@ type config struct {
 }
 
 type Option interface {
-	apply(cfg *config)
+	apply(s *server)
 }
 
-type OptionFun func(cfg *config)
+type OptionFun func(s *server)
 
-func (f OptionFun) apply(cfg *config) {
-	f(cfg)
+func (f OptionFun) apply(s *server) {
+	f(s)
 }
 
 func WithAddr(addr string) Option {
-	return OptionFun(func(cfg *config) {
-		cfg.Addr = addr
+	return OptionFun(func(s *server) {
+		s.cfg.Addr = addr
 	})
 }
 
 func WithName(name string) Option {
-	return OptionFun(func(cfg *config) {
-		cfg.Name = name
+	return OptionFun(func(s *server) {
+		s.cfg.Name = name
 	})
 }
 
 func WithClusterAddr(addr string) Option {
-	return OptionFun(func(cfg *config) {
-		cfg.ClusterAddr = addr
+	return OptionFun(func(s *server) {
+		s.cfg.ClusterAddr = addr
 	})
 }
 
 func WithMaxConn(maxConn int) Option {
-	return OptionFun(func(cfg *config) {
-		cfg.MaxConn = maxConn
+	return OptionFun(func(s *server) {
+		s.cfg.MaxConn = maxConn
 	})
 }
 
 func WithMaxSubs(maxSubs int) Option {
-	return OptionFun(func(cfg *config) {
-		cfg.MaxSubs = maxSubs
+	return OptionFun(func(s *server) {
+		s.cfg.MaxSubs = maxSubs
 	})
 }
 
 func WithConnectRouterAddr(addr string) Option {
-	return OptionFun(func(cfg *config) {
-		cfg.ConnectRouterAddr = addr
+	return OptionFun(func(s *server) {
+		s.cfg.ConnectRouterAddr = addr
+	})
+}
+
+// WithService
+func WithService(service base.Service) Option {
+	return OptionFun(func(s *server) {
+		s.service = service
 	})
 }
