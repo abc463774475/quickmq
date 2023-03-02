@@ -38,7 +38,7 @@ type server struct {
 	rwmRouter         sync.RWMutex
 	allRouterConfInfo map[string]*RouterConfInfo
 
-	// LameDuck mode
+	// LameDuck mode 可以说是优雅关闭
 	// 后端服务正在监听端口，并且可以服务请求，但是已经明确要求客户端停止发送请求。
 	// 当某个请求进入跛脚鸭状态时，它会将这个状态广播给所有已经连接的客户端。
 	ldm   bool
@@ -48,8 +48,7 @@ type server struct {
 }
 
 func (s *server) NewAcceptClienter(id int64) base.AcceptClienHandler {
-	client := newAcceptClient(id, nil, s, nil)
-	return client
+	return nil
 }
 
 func (s *server) AddClient(client base.AcceptClienHandler) error {

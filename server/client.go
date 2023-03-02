@@ -173,7 +173,11 @@ func newAcceptClient(id int64, conn net.Conn, s *server, clienter base.AcceptCli
 	c.srv = s
 	c.nc = conn
 	c.isServerAccept = true
-	c.clienter = clienter
+	if clienter != nil {
+		c.clienter = clienter
+	} else {
+		c.clienter = c
+	}
 
 	return c
 }
