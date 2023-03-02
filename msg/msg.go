@@ -29,6 +29,7 @@ func (h *Head) Load(data []byte) {
 
 func (h *Head) Save() []byte {
 	w := bytes.NewBuffer(nil)
+	// reflect 会导致性能下降 后面可以考虑完全展开
 	_ = binary.Write(w, binary.LittleEndian, h)
 	return w.Bytes()
 }

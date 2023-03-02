@@ -1,6 +1,6 @@
 package base
 
-import "github.com/abc463774475/quickmq/qcmq/msg"
+import "github.com/abc463774475/quickmq/msg"
 
 type (
 	SUBFUN      func(data []byte, _msg *msg.MsgPub)

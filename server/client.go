@@ -9,13 +9,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/abc463774475/quickmq/qcmq/server/base"
+	"github.com/abc463774475/quickmq/server/base"
 
 	"github.com/abc463774475/msglist"
 
 	nlog "github.com/abc463774475/my_tool/n_log"
-	"github.com/abc463774475/quickmq/qcmq/msg"
-	"github.com/abc463774475/quickmq/qcmq/utils/snowflake"
+	"github.com/abc463774475/quickmq/msg"
+	"github.com/abc463774475/quickmq/utils/snowflake"
 )
 
 type ClientType int

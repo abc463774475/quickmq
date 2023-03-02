@@ -11,15 +11,15 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/abc463774475/quickmq/qcmq/server/base"
+	"github.com/abc463774475/quickmq/server/base"
 
 	"github.com/abc463774475/msglist"
 	"github.com/abc463774475/timer/timewheel"
 
-	"github.com/abc463774475/quickmq/qcmq/utils/snowflake"
+	"github.com/abc463774475/quickmq/utils/snowflake"
 
 	nlog "github.com/abc463774475/my_tool/n_log"
-	"github.com/abc463774475/quickmq/qcmq/msg"
+	"github.com/abc463774475/quickmq/msg"
 )
 
 type (

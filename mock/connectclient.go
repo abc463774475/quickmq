@@ -1,9 +1,9 @@
 package mock
 
 import (
-	"github.com/abc463774475/quickmq/qcmq/client"
-	"github.com/abc463774475/quickmq/qcmq/msg"
-	"github.com/abc463774475/quickmq/qcmq/server/base"
+	"github.com/abc463774475/quickmq/client"
+	"github.com/abc463774475/quickmq/msg"
+	"github.com/abc463774475/quickmq/server/base"
 )
 
 // 这里只会有一个客户端，所以暂时不做mgr管理

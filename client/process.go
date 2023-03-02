@@ -1,7 +1,7 @@
 package client
 
 import (
-	"github.com/abc463774475/quickmq/qcmq/msg"
+	"github.com/abc463774475/quickmq/msg"
 )
 
 func (c *Client) sendPing() {

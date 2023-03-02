@@ -4,7 +4,7 @@ import (
 	"sync"
 
 	nlog "github.com/abc463774475/my_tool/n_log"
-	"github.com/abc463774475/quickmq/qcmq/server/base"
+	"github.com/abc463774475/quickmq/server/base"
 )
 
 // 为什么要用写，，就是想给一个项目控制的机会。方便定制化操作！

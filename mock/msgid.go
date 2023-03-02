@@ -1,6 +1,6 @@
 package mock
 
-import "github.com/abc463774475/quickmq/qcmq/msg"
+import "github.com/abc463774475/quickmq/msg"
 
 type MSGID = msg.MSGID
 
