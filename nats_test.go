@@ -13,7 +13,7 @@ import (
 
 func TestNats(t *testing.T) {
 	snowflake.Init(1)
-	server.NewServer(server.WithAddr(":8081")).Start()
+	server.NewServer(server.WithAddr(":8087")).Start()
 }
 
 func TestSub(t *testing.T) {

@@ -9,7 +9,6 @@ import (
 	"github.com/abc463774475/quickmq/utils/snowflake"
 
 	"github.com/abc463774475/quickmq/msg"
-	"github.com/abc463774475/timer/timewheel"
 )
 
 func TestClient_sub(t *testing.T) {
@@ -38,18 +37,18 @@ func TestClient_pub(t *testing.T) {
 	snowflake.Init(1001)
 	c := NewClient(WithAddr("localhost:8087"))
 	data := []byte("hello world")
-	time.AfterFunc(2*time.Second, func() {
-		for i := 0; i < 100000; i++ {
-			c.Publish("haorena", data)
+	time.AfterFunc(1*time.Second, func() {
+		for i := 0; i < 1; i++ {
+			c.Publish("service.scene", data)
 		}
 	})
 
 	time.Sleep(1000 * time.Second)
 
-	tw := timewheel.NewTimeWheel(1*time.Second, 100)
-	tw.Start()
-
-	tw.Add(10*time.Millisecond, 1, func() {
-		nlog.Erro("xxxxxxxxx")
-	}, nil)
+	//tw := timewheel.NewTimeWheel(1*time.Second, 100)
+	//tw.Start()
+	//
+	//tw.Add(10*time.Millisecond, 1, func() {
+	//	nlog.Erro("xxxxxxxxx")
+	//}, nil)
 }

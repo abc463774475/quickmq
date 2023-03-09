@@ -452,8 +452,8 @@ func (c *Client) processMsgRoutePub(_msg *msg.Msg) {
 func (c *Client) processMsgSub(_msg *msg.Msg) {
 	msub := &msg.MsgSub{}
 	err := json.Unmarshal(_msg.Data, msub)
-	if err != nil {
-		nlog.Erro("processMsgSub: json.Unmarshal: %v", err)
+	if err != nil || msub.Sub == "" {
+		nlog.Erro("processMsgSub: json.Unmarshal: %v  %v", err, msub)
 		return
 	}
 

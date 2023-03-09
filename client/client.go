@@ -23,10 +23,6 @@ import (
 )
 
 type (
-	// SUBFUN      func(data []byte, _msg *msg.MsgPub)
-	// SUBACKFUN   func(_msg *msg.MsgSubAck)
-	// PUBCALLBACK func(data []byte)
-
 	SUBFUN      = base.SUBFUN
 	SUBACKFUN   = base.SUBACKFUN
 	PUBCALLBACK = base.PUBCALLBACK
@@ -179,7 +175,7 @@ func (c *Client) writeMsg(msg *msg.Msg) error {
 	}
 
 	if n != len(data) {
-		time.Sleep(1 * time.Second)
+		time.Sleep(100 * time.Millisecond)
 		n1, err := c.nc.Write(data[n:])
 		if err != nil {
 			return err

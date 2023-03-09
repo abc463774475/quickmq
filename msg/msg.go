@@ -15,6 +15,8 @@ const (
 	MAX_MSG_LENGTH = 1024 * 10
 )
 
+var DefaultByteOrder binary.ByteOrder = binary.BigEndian
+
 // 传输层添加的包头
 type Head struct {
 	ID      MSGID
@@ -24,13 +26,13 @@ type Head struct {
 }
 
 func (h *Head) Load(data []byte) {
-	_ = binary.Read(bytes.NewBuffer(data), binary.LittleEndian, h)
+	_ = binary.Read(bytes.NewBuffer(data), DefaultByteOrder, h)
 }
 
 func (h *Head) Save() []byte {
 	w := bytes.NewBuffer(nil)
 	// reflect 会导致性能下降 后面可以考虑完全展开
-	_ = binary.Write(w, binary.LittleEndian, h)
+	_ = binary.Write(w, DefaultByteOrder, h)
 	return w.Bytes()
 }
 
