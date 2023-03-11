@@ -4,11 +4,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/abc463774475/snowflake"
+
 	nlog "github.com/abc463774475/my_tool/n_log"
 	"github.com/abc463774475/quickmq/client"
 	"github.com/abc463774475/quickmq/msg"
 	"github.com/abc463774475/quickmq/server"
-	"github.com/abc463774475/quickmq/utils/snowflake"
 )
 
 func TestNats(t *testing.T) {

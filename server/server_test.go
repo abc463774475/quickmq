@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	nlog "github.com/abc463774475/my_tool/n_log"
-	"github.com/abc463774475/quickmq/utils/snowflake"
+	"github.com/abc463774475/snowflake"
 
 	_ "github.com/abc463774475/msglist"
 )
@@ -53,4 +53,7 @@ func TestServer_route2(t *testing.T) {
 func TestLen(t *testing.T) {
 	str := `{"sub":"haorena","data":"AQEBAQ=="}`
 	t.Log(len(str))
+
+	// 正则 不包含.log .pb.go 文件
+	// ^((?!log|pb.go).)*$
 }

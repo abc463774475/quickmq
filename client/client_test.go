@@ -6,7 +6,7 @@ import (
 	"time"
 
 	nlog "github.com/abc463774475/my_tool/n_log"
-	"github.com/abc463774475/quickmq/utils/snowflake"
+	"github.com/abc463774475/snowflake"
 
 	"github.com/abc463774475/quickmq/msg"
 )
@@ -20,7 +20,7 @@ func TestClient_sub(t *testing.T) {
 	time.AfterFunc(1*time.Second, func() {
 		c.Subscribe(sub, func(data []byte, pub *msg.MsgPub) {
 			atomic.AddInt32(&count, 1)
-			// nlog.Erro("sub: %v %v", string(data), atomic.LoadInt32(&count))
+			nlog.Erro("sub: %v %v", string(data), atomic.LoadInt32(&count))
 			v := atomic.LoadInt32(&count)
 			if v%10000 == 0 {
 				nlog.Erro("sub: %v %v", string(data), atomic.LoadInt32(&count))
@@ -39,7 +39,7 @@ func TestClient_pub(t *testing.T) {
 	data := []byte("hello world")
 	time.AfterFunc(1*time.Second, func() {
 		for i := 0; i < 1; i++ {
-			c.Publish("service.scene", data)
+			c.Publish("haorena", data)
 		}
 	})
 

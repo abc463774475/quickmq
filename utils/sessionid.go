@@ -3,6 +3,8 @@ package utils
 import (
 	"fmt"
 	"time"
+
+	_ "github.com/abc463774475/snowflake"
 )
 
 func GetSessionIDByTimer() string {

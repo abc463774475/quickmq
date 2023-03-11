@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/abc463774475/quickmq/msg"
-	"github.com/abc463774475/quickmq/utils/snowflake"
+	"github.com/abc463774475/snowflake"
 )
 
 // TestConnectClient 测试客户端
